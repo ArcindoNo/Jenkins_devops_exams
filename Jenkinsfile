@@ -41,29 +41,27 @@ pipeline {
         // ─────────────────────────────────────────
         // ETAPE 3 : Envoi des images sur DockerHub
         // ─────────────────────────────────────────
-        stage('Push to DockerHub') {
-            steps {
-                echo "Connexion à DockerHub..."
-                withCredentials([usernamePassword(
-                    credentialsId: 'DOCKER_HUB_PASS',
-                    usernameVariable: 'DOCKER_USER',
-                    passwordVariable: 'DOCKER_PASS'
-                )]) {
-                    sh "echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin"
-
-                    echo "Envoi de l image cast-service..."
-                    sh "docker push ${CAST_IMAGE}:${BUILD_NUMBER}"
-                    sh "docker push ${CAST_IMAGE}:latest"
-
-                    echo "Envoi de l image movie-service..."
-                    sh "docker push ${MOVIE_IMAGE}:${BUILD_NUMBER}"
-                    sh "docker push ${MOVIE_IMAGE}:latest"
-
-                    sh "docker logout"
-                    echo "Images envoyées sur DockerHub avec succès !"
-                }
-            }
+        
+stage('Push to DockerHub') {
+    steps {
+        echo "Connexion à DockerHub..."
+        withCredentials([usernamePassword(
+            credentialsId: 'DOCKER_HUB_PASS',
+            usernameVariable: 'DOCKER_USER',
+            passwordVariable: 'DOCKER_PASS'
+        )]) {
+            // Utilisez la variable d'environnement directement dans la commande Docker
+            sh "echo \$DOCKER_PASS | docker login -u \$DOCKER_USER --password-stdin"
+            // Notez l'échappement du \$ pour éviter l'interpolation par Jenkins
         }
+        echo "Envoi des images..."
+        sh "docker push ${CAST_IMAGE}:${BUILD_NUMBER}"
+        sh "docker push ${CAST_IMAGE}:latest"
+        sh "docker push ${MOVIE_IMAGE}:${BUILD_NUMBER}"
+        sh "docker push ${MOVIE_IMAGE}:latest"
+        sh "docker logout"
+        }
+    }
 
         // ─────────────────────────────────────────
         // ETAPE 4 : Déploiement en DEV
@@ -145,33 +143,28 @@ pipeline {
         // Déclenché UNIQUEMENT sur un tag Git vX.X
         // depuis la branche master
         // ─────────────────────────────────────────
-        stage('Deploy to PROD') {
-            when {
-                allOf {
-                    branch 'master'
-                    tag pattern: 'v.*', comparator: 'REGEXP'
-                }
-            }
-            steps {
-                echo "Déploiement en PROD..."
-                sh """
-                    helm upgrade --install cast-service ${HELM_CHART} \
-                        --namespace prod \
-                        --set image.repository=${CAST_IMAGE} \
-                        --set image.tag=${BUILD_NUMBER} \
-                        --set service.nodePort=30007
-                """
-                sh """
-                    helm upgrade --install movie-service ${HELM_CHART} \
-                        --namespace prod \
-                        --set image.repository=${MOVIE_IMAGE} \
-                        --set image.tag=${BUILD_NUMBER} \
-                        --set service.nodePort=30008
-                """
-                echo "Déploiement en PROD terminé !"
-            }
+stage('Deploy to PROD') {
+    when {
+        tag pattern: 'v.*', comparator: 'REGEXP'
+    }
+    steps {
+        echo "Déploiement en PROD..."
+        sh """
+            helm upgrade --install cast-service ${HELM_CHART} \
+                --namespace prod \
+                --set image.repository=${CAST_IMAGE} \
+                --set image.tag=${BUILD_NUMBER} \
+                --set service.nodePort=30007
+        """
+        sh """
+            helm upgrade --install movie-service ${HELM_CHART} \
+                --namespace prod \
+                --set image.repository=${MOVIE_IMAGE} \
+                --set image.tag=${BUILD_NUMBER} \
+                --set service.nodePort=30008
+        """
+        echo "Déploiement en PROD terminé !"
         }
-
     }
 
     // ─────────────────────────────────────────
