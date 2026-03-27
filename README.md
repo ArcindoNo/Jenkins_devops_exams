@@ -7,3 +7,50 @@ Learn to build your own microservice using Python and FastAPI
  - Run `docker-compose up -d`
  - Head over to http://localhost:8080/api/v1/movies/docs for movie service docs 
    and http://localhost:8080/api/v1/casts/docs for cast service docs
+
+
+ ## Structure du Projet (fichier project_structure.txt )
+.
+├── Jenkinsfile
+├── README.md
+├── cast-service
+│   ├── Dockerfile
+│   ├── app
+│   │   ├── api
+│   │   │   ├── casts.py
+│   │   │   ├── db.py
+│   │   │   ├── db_manager.py
+│   │   │   └── models.py
+│   │   └── main.py
+│   └── requirements.txt
+├── charts
+│   ├── Chart.yaml
+│   ├── README.md
+│   ├── templates
+│   │   ├── NOTES.txt
+│   │   ├── _helpers.tpl
+│   │   ├── deployment.yaml
+│   │   ├── hpa.yaml
+│   │   ├── ingress.yaml
+│   │   ├── service.yaml
+│   │   ├── serviceaccount.yaml
+│   │   └── tests
+│   │       └── test-connection.yaml
+│   └── values.yaml
+├── docker-compose.yml
+├── movie-service
+│   ├── Dockerfile
+│   ├── app
+│   │   ├── api
+│   │   │   ├── db.py
+│   │   │   ├── db_manager.py
+│   │   │   ├── models.py
+│   │   │   ├── movies.py
+│   │   │   └── service.py
+│   │   └── main.py
+│   └── requirements.txt
+├── nginx_config.conf
+└── project_structure.txt
+
+10 directories, 31 files
+
