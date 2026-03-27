@@ -8,13 +8,25 @@
  * 4. Push to DockerHub : Envoi des images sur DockerHub
  * 5. Deploy to DEV/QA/STAGING : Déploiement dans les environnements de test
  * 6. Deploy to PROD : Déploiement en production (manuel, sur tag v.*)
- *
- * Variables d'environnement :
- * - DOCKER_HUB_USER : Utilisateur DockerHub
- * - CAST_IMAGE : Nom de l'image Docker pour cast-service
- * - MOVIE_IMAGE : Nom de l'image Docker pour movie-service
- * - HELM_CHART : Chemin vers les charts Helm
  */
+
+// Fonction pour déployer dans un environnement donné
+def deployToEnv(String namespace, int castPort, int moviePort) {
+    sh """
+        helm upgrade --install cast-service ${HELM_CHART} \
+            --namespace ${namespace} \
+            --set image.repository=${CAST_IMAGE} \
+            --set image.tag=${BUILD_NUMBER} \
+            --set service.nodePort=${castPort}
+    """
+    sh """
+        helm upgrade --install movie-service ${HELM_CHART} \
+            --namespace ${namespace} \
+            --set image.repository=${MOVIE_IMAGE} \
+            --set image.tag=${BUILD_NUMBER} \
+            --set service.nodePort=${moviePort}
+    """
+}
 
 pipeline {
     agent any
@@ -96,31 +108,15 @@ pipeline {
             }
         }
 
-        // Fonction pour déployer dans un environnement donné
-        def deployToEnv(String namespace, int castPort, int moviePort) {
-            sh """
-                helm upgrade --install cast-service ${HELM_CHART} \
-                    --namespace ${namespace} \
-                    --set image.repository=${CAST_IMAGE} \
-                    --set image.tag=${BUILD_NUMBER} \
-                    --set service.nodePort=${castPort}
-            """
-            sh """
-                helm upgrade --install movie-service ${HELM_CHART} \
-                    --namespace ${namespace} \
-                    --set image.repository=${MOVIE_IMAGE} \
-                    --set image.tag=${BUILD_NUMBER} \
-                    --set service.nodePort=${moviePort}
-            """
-        }
-
         // ─────────────────────────────────────────
         // ETAPE 4 : Déploiement en DEV
         // ─────────────────────────────────────────
         stage('Deploy to DEV') {
             steps {
                 echo "Déploiement en DEV..."
-                deployToEnv('dev', 30001, 30002)
+                script {
+                    deployToEnv('dev', 30001, 30002)
+                }
                 echo "Déploiement en DEV terminé !"
             }
         }
@@ -131,7 +127,9 @@ pipeline {
         stage('Deploy to QA') {
             steps {
                 echo "Déploiement en QA..."
-                deployToEnv('qa', 30003, 30004)
+                script {
+                    deployToEnv('qa', 30003, 30004)
+                }
                 echo "Déploiement en QA terminé !"
             }
         }
@@ -142,7 +140,9 @@ pipeline {
         stage('Deploy to Staging') {
             steps {
                 echo "Déploiement en Staging..."
-                deployToEnv('staging', 30005, 30006)
+                script {
+                    deployToEnv('staging', 30005, 30006)
+                }
                 echo "Déploiement en Staging terminé !"
             }
         }
