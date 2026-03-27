@@ -2,191 +2,146 @@ pipeline {
     agent any
 
     environment {
-        DOCKER_HUB_USER = 'datasarcindo'
-        CAST_IMAGE      = "${DOCKER_HUB_USER}/cast-service"
-        MOVIE_IMAGE     = "${DOCKER_HUB_USER}/movie-service"
-        HELM_CHART      = './charts'
+        DOCKER_ID      = "datasarcindo"
+        CAST_IMAGE     = "cast-service"
+        MOVIE_IMAGE    = "movie-service"
+        DOCKER_TAG     = "v.${BUILD_ID}.0"
+        KUBECONFIG     = credentials('kubeconfig')
     }
 
     stages {
 
-        // ─────────────────────────────────────────
-        // STAGE 1 : Récupération du code
-        // ─────────────────────────────────────────
-        stage('Checkout') {
+        stage('Build Cast Service') {
             steps {
-                checkout scm
+                sh """
+                    docker build -t ${DOCKER_ID}/${CAST_IMAGE}:${DOCKER_TAG} ./cast-service
+                """
             }
         }
 
-        // ─────────────────────────────────────────
-        // STAGE 2 : Build des images Docker
-        // ─────────────────────────────────────────
-        stage('Build Docker Images') {
+        stage('Build Movie Service') {
             steps {
-                script {
-                    sh """
-                        docker build -t ${CAST_IMAGE}:${BUILD_NUMBER} -t ${CAST_IMAGE}:latest ./cast-service
-                        docker build -t ${MOVIE_IMAGE}:${BUILD_NUMBER} -t ${MOVIE_IMAGE}:latest ./movie-service
-                    """
-                }
+                sh """
+                    docker build -t ${DOCKER_ID}/${MOVIE_IMAGE}:${DOCKER_TAG} ./movie-service
+                """
             }
         }
 
-        // ─────────────────────────────────────────
-        // STAGE 3 : Push sur DockerHub
-        // ─────────────────────────────────────────
-        stage('Push to DockerHub') {
+        stage('Push Cast Service') {
             steps {
                 withCredentials([usernamePassword(
-                    credentialsId: 'dockerhub-credentials',
+                    credentialsId: 'DOCKER_HUB_PASS',
                     usernameVariable: 'DOCKER_USER',
                     passwordVariable: 'DOCKER_PASS'
                 )]) {
                     sh """
                         echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin
-                        docker push ${CAST_IMAGE}:${BUILD_NUMBER}
-                        docker push ${CAST_IMAGE}:latest
-                        docker push ${MOVIE_IMAGE}:${BUILD_NUMBER}
-                        docker push ${MOVIE_IMAGE}:latest
+                        docker push ${DOCKER_ID}/${CAST_IMAGE}:${DOCKER_TAG}
+                    """
+                }
+            }
+        }
+
+        stage('Push Movie Service') {
+            steps {
+                withCredentials([usernamePassword(
+                    credentialsId: 'DOCKER_HUB_PASS',
+                    usernameVariable: 'DOCKER_USER',
+                    passwordVariable: 'DOCKER_PASS'
+                )]) {
+                    sh """
+                        docker push ${DOCKER_ID}/${MOVIE_IMAGE}:${DOCKER_TAG}
                         docker logout
                     """
                 }
             }
         }
 
-        // ─────────────────────────────────────────
-        // STAGE 4 : Déploiement en DEV
-        // ─────────────────────────────────────────
-        stage('Deploy to DEV') {
+        stage('Deploy to Dev') {
             steps {
-                withCredentials([file(
-                    credentialsId: 'kubeconfig',
-                    variable: 'KUBECONFIG'
-                )]) {
-                    sh """
-                        helm upgrade --install cast-service ${HELM_CHART} \
-                            --kubeconfig=$KUBECONFIG \
-                            --namespace dev \
-                            --set image.repository=${CAST_IMAGE} \
-                            --set image.tag=${BUILD_NUMBER} \
-                            --set service.nodePort=30001
+                sh """
+                    helm upgrade --install cast-service ./charts \
+                        --namespace dev \
+                        --set image.repository=${DOCKER_ID}/${CAST_IMAGE} \
+                        --set image.tag=${DOCKER_TAG} \
+                        --kubeconfig ${KUBECONFIG}
 
-                        helm upgrade --install movie-service ${HELM_CHART} \
-                            --kubeconfig=$KUBECONFIG \
-                            --namespace dev \
-                            --set image.repository=${MOVIE_IMAGE} \
-                            --set image.tag=${BUILD_NUMBER} \
-                            --set service.nodePort=30002
-                    """
-                }
+                    helm upgrade --install movie-service ./charts \
+                        --namespace dev \
+                        --set image.repository=${DOCKER_ID}/${MOVIE_IMAGE} \
+                        --set image.tag=${DOCKER_TAG} \
+                        --kubeconfig ${KUBECONFIG}
+                """
             }
         }
 
-        // ─────────────────────────────────────────
-        // STAGE 5 : Déploiement en QA
-        // ─────────────────────────────────────────
         stage('Deploy to QA') {
             steps {
-                withCredentials([file(
-                    credentialsId: 'kubeconfig',
-                    variable: 'KUBECONFIG'
-                )]) {
-                    sh """
-                        helm upgrade --install cast-service ${HELM_CHART} \
-                            --kubeconfig=$KUBECONFIG \
-                            --namespace qa \
-                            --set image.repository=${CAST_IMAGE} \
-                            --set image.tag=${BUILD_NUMBER} \
-                            --set service.nodePort=30003
+                sh """
+                    helm upgrade --install cast-service ./charts \
+                        --namespace qa \
+                        --set image.repository=${DOCKER_ID}/${CAST_IMAGE} \
+                        --set image.tag=${DOCKER_TAG} \
+                        --kubeconfig ${KUBECONFIG}
 
-                        helm upgrade --install movie-service ${HELM_CHART} \
-                            --kubeconfig=$KUBECONFIG \
-                            --namespace qa \
-                            --set image.repository=${MOVIE_IMAGE} \
-                            --set image.tag=${BUILD_NUMBER} \
-                            --set service.nodePort=30004
-                    """
-                }
+                    helm upgrade --install movie-service ./charts \
+                        --namespace qa \
+                        --set image.repository=${DOCKER_ID}/${MOVIE_IMAGE} \
+                        --set image.tag=${DOCKER_TAG} \
+                        --kubeconfig ${KUBECONFIG}
+                """
             }
         }
 
-        // ─────────────────────────────────────────
-        // STAGE 6 : Déploiement en STAGING
-        // ─────────────────────────────────────────
         stage('Deploy to Staging') {
             steps {
-                withCredentials([file(
-                    credentialsId: 'kubeconfig',
-                    variable: 'KUBECONFIG'
-                )]) {
-                    sh """
-                        helm upgrade --install cast-service ${HELM_CHART} \
-                            --kubeconfig=$KUBECONFIG \
-                            --namespace staging \
-                            --set image.repository=${CAST_IMAGE} \
-                            --set image.tag=${BUILD_NUMBER} \
-                            --set service.nodePort=30005
+                sh """
+                    helm upgrade --install cast-service ./charts \
+                        --namespace staging \
+                        --set image.repository=${DOCKER_ID}/${CAST_IMAGE} \
+                        --set image.tag=${DOCKER_TAG} \
+                        --kubeconfig ${KUBECONFIG}
 
-                        helm upgrade --install movie-service ${HELM_CHART} \
-                            --kubeconfig=$KUBECONFIG \
-                            --namespace staging \
-                            --set image.repository=${MOVIE_IMAGE} \
-                            --set image.tag=${BUILD_NUMBER} \
-                            --set service.nodePort=30006
-                    """
-                }
+                    helm upgrade --install movie-service ./charts \
+                        --namespace staging \
+                        --set image.repository=${DOCKER_ID}/${MOVIE_IMAGE} \
+                        --set image.tag=${DOCKER_TAG} \
+                        --kubeconfig ${KUBECONFIG}
+                """
             }
         }
 
-        // ─────────────────────────────────────────
-        // STAGE 7 : Déploiement en PROD
-        // Uniquement sur un tag Git (v*) depuis master
-        // ─────────────────────────────────────────
-        stage('Deploy to PROD') {
+        stage('Deploy to Prod') {
             when {
-                allOf {
-                    branch 'master'
-                    tag pattern: 'v.*', comparator: 'REGEXP'
-                }
+                branch 'master'
             }
             steps {
-                withCredentials([file(
-                    credentialsId: 'kubeconfig',
-                    variable: 'KUBECONFIG'
-                )]) {
-                    sh """
-                        helm upgrade --install cast-service ${HELM_CHART} \
-                            --kubeconfig=$KUBECONFIG \
-                            --namespace prod \
-                            --set image.repository=${CAST_IMAGE} \
-                            --set image.tag=${BUILD_NUMBER} \
-                            --set service.nodePort=30007
-
-                        helm upgrade --install movie-service ${HELM_CHART} \
-                            --kubeconfig=$KUBECONFIG \
-                            --namespace prod \
-                            --set image.repository=${MOVIE_IMAGE} \
-                            --set image.tag=${BUILD_NUMBER} \
-                            --set service.nodePort=30008
-                    """
+                timeout(time: 15, unit: 'MINUTES') {
+                    input message: 'Déployer en production ?', ok: 'Oui, déployer !'
                 }
+                sh """
+                    helm upgrade --install cast-service ./charts \
+                        --namespace prod \
+                        --set image.repository=${DOCKER_ID}/${CAST_IMAGE} \
+                        --set image.tag=${DOCKER_TAG} \
+                        --kubeconfig ${KUBECONFIG}
+
+                    helm upgrade --install movie-service ./charts \
+                        --namespace prod \
+                        --set image.repository=${DOCKER_ID}/${MOVIE_IMAGE} \
+                        --set image.tag=${DOCKER_TAG} \
+                        --kubeconfig ${KUBECONFIG}
+                """
             }
         }
     }
 
-    // ─────────────────────────────────────────
-    // POST : Notifications de fin de pipeline
-    // ─────────────────────────────────────────
     post {
         success {
-            echo " Pipeline terminé avec succès ! Build #${BUILD_NUMBER}"
+            echo 'Pipeline terminé avec succès !'
         }
         failure {
-            echo " Pipeline en échec ! Vérifiez les logs du build #${BUILD_NUMBER}"
-        }
-        always {
-            sh 'docker logout || true'
+            echo 'Pipeline en échec !'
         }
     }
 }
