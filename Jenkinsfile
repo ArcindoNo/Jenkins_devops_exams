@@ -1,147 +1,117 @@
 pipeline {
+
     agent any
 
+    // Variables globales du pipeline
     environment {
-        DOCKER_ID      = "datasarcindo"
-        CAST_IMAGE     = "cast-service"
-        MOVIE_IMAGE    = "movie-service"
-        DOCKER_TAG     = "v.${BUILD_ID}.0"
-        KUBECONFIG     = credentials('kubeconfig')
+        DOCKER_HUB_USER = 'datasarcindo'
+        CAST_IMAGE      = "${DOCKER_HUB_USER}/cast-service"
+        MOVIE_IMAGE     = "${DOCKER_HUB_USER}/movie-service"
     }
 
     stages {
 
-        stage('Build Cast Service') {
+        // ETAPE 1 : Récupération du code depuis GitHub
+        stage('Checkout') {
             steps {
-                sh """
-                    docker build -t ${DOCKER_ID}/${CAST_IMAGE}:${DOCKER_TAG} ./cast-service
-                """
+                echo "Récupération du code depuis GitHub..."
+                checkout scm
+                echo "Code récupéré avec succès !"
             }
         }
 
-        stage('Build Movie Service') {
+        // ETAPE 2 : Construction des images Docker
+        stage('Build Docker Images') {
             steps {
-                sh """
-                    docker build -t ${DOCKER_ID}/${MOVIE_IMAGE}:${DOCKER_TAG} ./movie-service
-                """
+                echo "Construction de l image cast-service..."
+                sh "docker build -t ${CAST_IMAGE}:${BUILD_NUMBER} -t ${CAST_IMAGE}:latest ./cast-service"
+
+                echo "Construction de l image movie-service..."
+                sh "docker build -t ${MOVIE_IMAGE}:${BUILD_NUMBER} -t ${MOVIE_IMAGE}:latest ./movie-service"
+
+                echo "Images construites avec succès !"
             }
         }
 
-        stage('Push Cast Service') {
+        // ETAPE 3 : Envoi des images sur DockerHub
+        stage('Push to DockerHub') {
             steps {
+                echo "Connexion à DockerHub..."
                 withCredentials([usernamePassword(
                     credentialsId: 'DOCKER_HUB_PASS',
                     usernameVariable: 'DOCKER_USER',
                     passwordVariable: 'DOCKER_PASS'
                 )]) {
-                    sh """
-                        echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin
-                        docker push ${DOCKER_ID}/${CAST_IMAGE}:${DOCKER_TAG}
-                    """
+                    sh "echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin"
+
+                    echo "Envoi de l image cast-service..."
+                    sh "docker push ${CAST_IMAGE}:${BUILD_NUMBER}"
+                    sh "docker push ${CAST_IMAGE}:latest"
+
+                    echo "Envoi de l image movie-service..."
+                    sh "docker push ${MOVIE_IMAGE}:${BUILD_NUMBER}"
+                    sh "docker push ${MOVIE_IMAGE}:latest"
+
+                    sh "docker logout"
+                    echo "Images envoyées sur DockerHub avec succès !"
                 }
             }
         }
 
-        stage('Push Movie Service') {
-            steps {
-                withCredentials([usernamePassword(
-                    credentialsId: 'DOCKER_HUB_PASS',
-                    usernameVariable: 'DOCKER_USER',
-                    passwordVariable: 'DOCKER_PASS'
-                )]) {
-                    sh """
-                        docker push ${DOCKER_ID}/${MOVIE_IMAGE}:${DOCKER_TAG}
-                        docker logout
-                    """
-                }
-            }
-        }
-
-        stage('Deploy to Dev') {
-            steps {
-                sh """
-                    helm upgrade --install cast-service ./charts \
-                        --namespace dev \
-                        --set image.repository=${DOCKER_ID}/${CAST_IMAGE} \
-                        --set image.tag=${DOCKER_TAG} \
-                        --kubeconfig ${KUBECONFIG}
-
-                    helm upgrade --install movie-service ./charts \
-                        --namespace dev \
-                        --set image.repository=${DOCKER_ID}/${MOVIE_IMAGE} \
-                        --set image.tag=${DOCKER_TAG} \
-                        --kubeconfig ${KUBECONFIG}
-                """
-            }
-        }
-
-        stage('Deploy to QA') {
-            steps {
-                sh """
-                    helm upgrade --install cast-service ./charts \
-                        --namespace qa \
-                        --set image.repository=${DOCKER_ID}/${CAST_IMAGE} \
-                        --set image.tag=${DOCKER_TAG} \
-                        --kubeconfig ${KUBECONFIG}
-
-                    helm upgrade --install movie-service ./charts \
-                        --namespace qa \
-                        --set image.repository=${DOCKER_ID}/${MOVIE_IMAGE} \
-                        --set image.tag=${DOCKER_TAG} \
-                        --kubeconfig ${KUBECONFIG}
-                """
-            }
-        }
-
-        stage('Deploy to Staging') {
-            steps {
-                sh """
-                    helm upgrade --install cast-service ./charts \
-                        --namespace staging \
-                        --set image.repository=${DOCKER_ID}/${CAST_IMAGE} \
-                        --set image.tag=${DOCKER_TAG} \
-                        --kubeconfig ${KUBECONFIG}
-
-                    helm upgrade --install movie-service ./charts \
-                        --namespace staging \
-                        --set image.repository=${DOCKER_ID}/${MOVIE_IMAGE} \
-                        --set image.tag=${DOCKER_TAG} \
-                        --kubeconfig ${KUBECONFIG}
-                """
-            }
-        }
-
-        stage('Deploy to Prod') {
+        // ETAPE 4 : Déploiement DEV (désactivé pour l instant)
+        stage('Deploy to DEV') {
             when {
-                branch 'master'
+                expression { return false }
             }
             steps {
-                timeout(time: 15, unit: 'MINUTES') {
-                    input message: 'Déployer en production ?', ok: 'Oui, déployer !'
-                }
-                sh """
-                    helm upgrade --install cast-service ./charts \
-                        --namespace prod \
-                        --set image.repository=${DOCKER_ID}/${CAST_IMAGE} \
-                        --set image.tag=${DOCKER_TAG} \
-                        --kubeconfig ${KUBECONFIG}
-
-                    helm upgrade --install movie-service ./charts \
-                        --namespace prod \
-                        --set image.repository=${DOCKER_ID}/${MOVIE_IMAGE} \
-                        --set image.tag=${DOCKER_TAG} \
-                        --kubeconfig ${KUBECONFIG}
-                """
+                echo "Déploiement en DEV..."
             }
         }
+
+        // ETAPE 5 : Déploiement QA (désactivé pour l instant)
+        stage('Deploy to QA') {
+            when {
+                expression { return false }
+            }
+            steps {
+                echo "Déploiement en QA..."
+            }
+        }
+
+        // ETAPE 6 : Déploiement STAGING (désactivé pour l instant)
+        stage('Deploy to Staging') {
+            when {
+                expression { return false }
+            }
+            steps {
+                echo "Déploiement en Staging..."
+            }
+        }
+
+        // ETAPE 7 : Déploiement PROD (désactivé pour l instant)
+        // Sera activé uniquement sur un tag Git vX.X depuis master
+        stage('Deploy to PROD') {
+            when {
+                expression { return false }
+            }
+            steps {
+                echo "Déploiement en PROD..."
+            }
+        }
+
     }
 
+    // Actions après le pipeline
     post {
         success {
-            echo 'Pipeline terminé avec succès !'
+            echo "Pipeline terminé avec succès ! Build numéro ${BUILD_NUMBER}"
         }
         failure {
-            echo 'Pipeline en échec !'
+            echo "Pipeline en échec ! Consultez les logs du build ${BUILD_NUMBER}"
+        }
+        always {
+            sh "docker logout || true"
         }
     }
+
 }
